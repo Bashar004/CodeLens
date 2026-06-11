@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: codelens_db
+    environment:
+      POSTGRES_DB: codelens
+      POSTGRES_USER: bashar
+      POSTGRES_PASSWORD: codelens
+    ports:
+      - "5433:5432"
+    volumes:
+      - codelens_data:/var/lib/postgresql/data
+
+volumes:
+  codelens_data:
