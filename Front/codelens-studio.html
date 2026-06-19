@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CodeLens</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+<style>
+/* ════════════════════════════════════════════════════════════
+   DESIGN TOKENS — Google-dark surfaces, one indigo accent.
+   Flat colors, large radii, pill buttons, quiet motion.
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#131314;            /* app background          */
+  --surface:#1E1F20;       /* panels, sidebar         */
+  --surface-2:#28292B;     /* hover / nested          */
+  --surface-3:#333538;     /* active                  */
+  --line:#2D2F33;
+
+  --tx-1:#E3E3E5;
+  --tx-2:#9AA0A6;
+  --tx-3:#6E7378;
+
+  --accent:#8C8FFF;        /* indigo — the only brand color */
+  --accent-strong:#A5A7FF;
+  --on-accent:#15162B;
+  --accent-dim:rgba(140,143,255,.12);
+  --accent-line:rgba(140,143,255,.4);
+
+  --ok:#81C995; --warn:#FDD663; --info:#8AB4F8; --busy:#C58AF9; --err:#F28B82;
+
+  --r:12px; --r-lg:18px; --r-pill:999px;
+  --ease:cubic-bezier(.2,0,0,1);          /* Google's standard easing */
+  --t-fast:.15s; --t-med:.25s;
+
+  --f:'Inter',system-ui,sans-serif;
+  --f-mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--tx-1);font-family:var(--f);font-size:14px;line-height:1.6;
+  -webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;color:inherit}
+input,select,textarea{font-family:inherit;color:var(--tx-1)}
+svg.ic{width:18px;height:18px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+::selection{background:rgba(140,143,255,.3)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:6px;border:2px solid var(--bg)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+@keyframes pulse{50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.anim{animation:fadeUp .4s var(--ease) both}
+
+/* ── Buttons: pill-shaped, flat, AI-Studio-like ─────────────── */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border-radius:var(--r-pill);
+  border:1px solid var(--line);background:transparent;font-size:13.5px;font-weight:500;
+  transition:background var(--t-fast),border-color var(--t-fast),color var(--t-fast)}
+.btn:hover{background:var(--surface-2)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-p{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn-p:hover{background:var(--accent-strong);border-color:var(--accent-strong)}
+.btn-tonal{background:var(--accent-dim);border-color:transparent;color:var(--accent)}
+.btn-tonal:hover{background:rgba(140,143,255,.2)}
+.btn-ghost{border-color:transparent;color:var(--tx-2)}
+.btn-ghost:hover{color:var(--tx-1);background:var(--surface-2)}
+.btn-sm{padding:6px 13px;font-size:12.5px}
+.btn-icon{padding:8px;border-radius:var(--r-pill)}
+.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.25);border-top-color:currentColor;
+  border-radius:50%;animation:spin .7s linear infinite}
+
+/* ── Fields ─────────────────────────────────────────────────── */
+.field{display:flex;flex-direction:column;gap:7px;margin-bottom:18px}
+.field label{font-size:12px;font-weight:500;color:var(--tx-2)}
+.field input,.field select{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);
+  padding:11px 14px;font-size:14px;transition:border-color var(--t-fast)}
+.field input:focus,.field select:focus{border-color:var(--accent);outline:none}
+.mono{font-family:var(--f-mono)}
+
+/* ── Status chips ───────────────────────────────────────────── */
+.chip{font-size:11.5px;font-weight:600;padding:3px 11px;border-radius:var(--r-pill);
+  display:inline-flex;align-items:center;gap:6px;letter-spacing:.02em}
+.chip::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+.chip.UPLOADED{color:var(--warn);background:rgba(253,214,99,.1)}
+.chip.PARSED{color:var(--info);background:rgba(138,180,248,.1)}
+.chip.INDEXING{color:var(--busy);background:rgba(197,138,249,.1)}
+.chip.INDEXING::before{animation:pulse 1.2s infinite}
+.chip.INDEXED{color:var(--ok);background:rgba(129,201,149,.1)}
+
+/* ════════════════════════════════════════════════════════════
+   AUTH — minimal, centered
+   ════════════════════════════════════════════════════════════ */
+#view-auth{min-height:100vh;display:flex;flex-direction:column}
+.auth-top{padding:22px 32px}
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:600;font-size:16px;cursor:pointer}
+.brand .mark{width:26px;height:26px;border-radius:8px;background:var(--accent-dim);
+  display:grid;place-items:center;color:var(--accent)}
+.brand .mark svg{width:15px;height:15px}
+.auth-center{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.auth-card{width:100%;max-width:380px;animation:fadeUp .45s var(--ease) both}
+.auth-card h1{font-size:24px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}
+.auth-card .sub{color:var(--tx-2);font-size:13.5px;margin-bottom:28px}
+.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:4px;margin-bottom:24px}
+.seg button{flex:1;padding:8px;border:0;border-radius:var(--r-pill);background:transparent;
+  color:var(--tx-2);font-weight:500;font-size:13px;transition:var(--t-fast)}
+.seg button.active{background:var(--surface-3);color:var(--tx-1)}
+.auth-form .btn-p{width:100%;justify-content:center;padding:12px;margin-top:4px}
+
+/* ════════════════════════════════════════════════════════════
+   APP SHELL — sidebar + content
+   ════════════════════════════════════════════════════════════ */
+#app{display:none;height:100vh;grid-template-columns:264px 1fr}
+#app.on{display:grid}
+
+.side{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;
+  padding:18px 12px;gap:4px;overflow-y:auto}
+.side .brand{padding:4px 12px 18px}
+.side .new-btn{margin:0 8px 18px;justify-content:flex-start;gap:12px;padding:12px 18px;
+  border-radius:var(--r-lg);background:var(--accent-dim);border:none;color:var(--accent);font-weight:600}
+.side .new-btn:hover{background:rgba(140,143,255,.2)}
+.nav-label{font-size:11px;font-weight:600;color:var(--tx-3);letter-spacing:.08em;text-transform:uppercase;
+  padding:14px 14px 8px}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--r-pill);
+  border:none;background:transparent;color:var(--tx-2);font-size:13.5px;font-weight:500;width:100%;
+  text-align:left;transition:background var(--t-fast),color var(--t-fast)}
+.nav-item:hover{background:var(--surface-2);color:var(--tx-1)}
+.nav-item.active{background:var(--accent-dim);color:var(--accent)}
+.nav-item:disabled{opacity:.35;cursor:default;background:transparent}
+.nav-item:disabled:hover{color:var(--tx-2)}
+.ws-name{font-family:var(--f-mono);font-size:12px;color:var(--tx-2);padding:0 14px 6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side .spacer{flex:1}
+.side .user{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--surface-3);color:var(--accent);
+  display:grid;place-items:center;font-weight:600;font-size:12.5px}
+.user .em{flex:1;font-size:12.5px;color:var(--tx-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.content{overflow-y:auto;padding:36px 44px 80px}
+.view{display:none;max-width:1040px;margin:0 auto}
+.view.on{display:block;animation:fadeUp .35s var(--ease) both}
+.head{display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap}
+.head h2{font-size:22px;font-weight:600;letter-spacing:-.01em}
+.head .grow{flex:1}
+.subline{color:var(--tx-2);font-size:13.5px;margin-bottom:30px}
+
+/* ── Project cards ──────────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;
+  display:flex;flex-direction:column;gap:15px;transition:border-color var(--t-med),background var(--t-med);
+  animation:fadeUp .4s var(--ease) both}
+.card:hover{border-color:#3D4045;background:#212224}
+.card-top{display:flex;align-items:flex-start;gap:10px}
+.card-name{font-weight:600;font-size:15px;flex:1;word-break:break-word}
+.card-meta{font-family:var(--f-mono);font-size:11.5px;color:var(--tx-3);display:flex;gap:16px}
+
+.pipeline{display:flex;align-items:center}
+.pstep{display:flex;align-items:center;flex:1}.pstep:last-child{flex:0}
+.pdot{width:8px;height:8px;border-radius:50%;background:var(--surface-3);flex-shrink:0;transition:var(--t-med)}
+.pline{height:1.5px;background:var(--line);flex:1;transition:var(--t-med)}
+.pstep.done .pdot{background:var(--ok)}
+.pstep.done .pline{background:rgba(129,201,149,.4)}
+.pstep.now .pdot{background:var(--busy);box-shadow:0 0 0 4px rgba(197,138,249,.15)}
+.plabels{display:flex;justify-content:space-between;font-size:9.5px;color:var(--tx-3);
+  margin-top:7px;letter-spacing:.06em;font-weight:500}
+
+.progress-wrap{display:none}
+.pbar{height:5px;border-radius:3px;background:var(--bg);overflow:hidden}
+.pfill{height:100%;width:0%;border-radius:3px;background:var(--accent);transition:width .5s var(--ease)}
+.ptext{font-family:var(--f-mono);font-size:11px;color:var(--tx-2);margin-top:6px}
+.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+
+.empty{border:1px dashed var(--line);border-radius:var(--r-lg);padding:64px 24px;text-align:center;color:var(--tx-2)}
+.empty .ei{width:44px;height:44px;border-radius:14px;background:var(--surface);border:1px solid var(--line);
+  display:grid;place-items:center;margin:0 auto 16px;color:var(--tx-3)}
+.empty b{color:var(--tx-1);display:block;margin-bottom:4px;font-size:15px}
+
+/* ── Search / results ───────────────────────────────────────── */
+.inputbar{display:flex;gap:10px;margin-bottom:22px}
+.inputbar input{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:13px 20px;font-size:14px;transition:border-color var(--t-fast)}
+.inputbar input:focus{border-color:var(--accent);outline:none}
+.skel{height:88px;border-radius:var(--r-lg);margin-bottom:12px;
+  background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);
+  background-size:200% 100%;animation:shimmer 1.2s linear infinite}
+.result{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:18px 20px;margin-bottom:12px;transition:border-color var(--t-fast);animation:fadeUp .35s var(--ease) both}
+.result:hover{border-color:#3D4045}
+.result-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.result-class{font-family:var(--f-mono);font-weight:500;font-size:14.5px;color:var(--info)}
+.result-type{font-family:var(--f-mono);font-size:10px;color:var(--tx-3);border:1px solid var(--line);
+  padding:2px 7px;border-radius:5px;letter-spacing:.05em}
+.sim{margin-left:auto;font-family:var(--f-mono);font-size:12px;font-weight:500;padding:3px 10px;border-radius:var(--r-pill)}
+.sim.hi{color:var(--ok);background:rgba(129,201,149,.1)}
+.sim.mid{color:var(--warn);background:rgba(253,214,99,.1)}
+.sim.lo{color:var(--tx-3);background:var(--surface-2)}
+.result-pkg{font-family:var(--f-mono);font-size:11.5px;color:var(--tx-3);margin:4px 0 8px;word-break:break-all}
+.result details{margin-top:10px}
+.result summary{cursor:pointer;font-size:12.5px;color:var(--accent);font-weight:500}
+pre.code{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-top:10px;
+  overflow:auto;font-family:var(--f-mono);font-size:12px;line-height:1.65;color:#C8CCD2;max-height:380px}
+.mchip{display:inline-block;font-family:var(--f-mono);font-size:11px;background:var(--surface-2);
+  border-radius:6px;padding:3px 9px;margin:3px 4px 0 0;color:var(--tx-2)}
+
+/* ── Chat ───────────────────────────────────────────────────── */
+.chat{display:flex;flex-direction:column;gap:14px;margin-bottom:22px;min-height:40px}
+.msg{max-width:80%;padding:13px 17px;border-radius:var(--r-lg);white-space:pre-wrap;
+  animation:fadeUp .3s var(--ease) both;font-size:14px}
+.msg.user{align-self:flex-end;background:var(--accent-dim);color:var(--tx-1);
+  border:1px solid var(--accent-line);border-bottom-right-radius:6px}
+.msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:6px}
+.msg.ai .sources{margin-top:13px;border-top:1px solid var(--line);padding-top:10px}
+.msg.ai .sources summary{font-size:12px;color:var(--tx-2);cursor:pointer;font-weight:500}
+.src-line{font-family:var(--f-mono);font-size:11.5px;margin-top:6px;color:var(--tx-2)}
+.src-line b{color:var(--info);font-weight:500}
+.dots{display:inline-flex;gap:4px;align-items:center}
+.dots i{width:5px;height:5px;border-radius:50%;background:var(--tx-2);animation:pulse 1s infinite}
+.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+
+/* ════════════════════════════════════════════════════════════
+   DIAGRAM VIEWER — dark canvas, pan/zoom, never disappears
+   ════════════════════════════════════════════════════════════ */
+.dg-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.dg-toolbar select{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:9px 16px;font-size:13px}
+.dg-toolbar .grow{flex:1}
+.dg-viewer{position:relative;border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;
+  height:600px;background:#161718;
+  background-image:radial-gradient(circle,#26282B 1px,transparent 1px);background-size:24px 24px;
+  cursor:grab;user-select:none;touch-action:none}
+.dg-viewer.grabbing{cursor:grabbing}
+.dg-viewer:fullscreen{border-radius:0;height:100vh}
+#dg-inner{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+#dg-inner svg{display:block}
+.dg-hud{position:absolute;bottom:14px;right:14px;display:flex;gap:6px;z-index:5;
+  background:rgba(30,31,32,.92);border:1px solid var(--line);border-radius:var(--r-pill);padding:5px}
+.dg-hud .btn-icon{border:none}
+.dg-zoom{font-family:var(--f-mono);font-size:11.5px;color:var(--tx-2);align-self:center;padding:0 8px;min-width:46px;text-align:center}
+.dg-overlay{position:absolute;inset:0;display:grid;place-items:center;color:var(--tx-3);font-size:13.5px;
+  text-align:center;padding:24px}
+.dg-overlay .err-box{color:var(--err);font-family:var(--f-mono);font-size:12px;max-width:560px;
+  background:var(--surface);border:1px solid rgba(242,139,130,.35);border-radius:var(--r);padding:18px 20px}
+.dg-stats{font-family:var(--f-mono);font-size:11.5px;color:var(--tx-2);margin-top:12px;display:flex;gap:20px;flex-wrap:wrap}
+
+/* ── Modals / toasts ────────────────────────────────────────── */
+.modal-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;
+  justify-content:center;z-index:60;padding:20px}
+.modal-back.open{display:flex;animation:fadeIn .15s both}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:28px;width:100%;
+  max-width:440px;animation:pop .22s var(--ease) both}
+.modal h3{font-size:17px;font-weight:600;margin-bottom:20px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+#toasts{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;
+  align-items:center;gap:8px;z-index:100}
+.toast{background:var(--surface-3);border-radius:var(--r-pill);padding:11px 22px;font-size:13px;
+  max-width:480px;box-shadow:0 8px 28px rgba(0,0,0,.5);animation:fadeUp .3s var(--ease) both}
+.toast.err{color:var(--err)}
+
+@media(max-width:860px){
+  #app.on{grid-template-columns:1fr}
+  .side{display:none}
+  .content{padding:22px 16px 70px}
+  .msg{max-width:100%}
+  .dg-viewer{height:440px}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ SVG ICON LIBRARY (no emojis anywhere) ═══════════ -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-lens" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><circle cx="11" cy="11" r="2.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2.5-2.7A8 8 0 1 1 21 12Z"/></symbol>
+  <symbol id="i-schema" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><rect x="14" y="3" width="7" height="6" rx="1.5"/><path d="M10 6h4M17.5 9v6M6.5 9v9a2 2 0 0 0 2 2H14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0 4 4m-4-4-4 4"/><path d="M4 17v2a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-2"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="9" r="2.2"/><path d="M6 7.2v9.6M18 11.2c0 3-2.5 4.3-5.5 4.3H8.2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-1 13a1.5 1.5 0 0 1-1.5 1.4h-7A1.5 1.5 0 0 1 7 20L6 7"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/><path d="m16 17 5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-zin" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6M11 8v6"/></symbol>
+  <symbol id="i-zout" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9m6 0h3.5A1.5 1.5 0 0 1 20 5.5V9m0 6v3.5a1.5 1.5 0 0 1-1.5 1.5H15m-6 0H5.5A1.5 1.5 0 0 1 4 18.5V15"/></symbol>
+  <symbol id="i-full" viewBox="0 0 24 24"><path d="M8 4H5.5A1.5 1.5 0 0 0 4 5.5V8m12-4h2.5A1.5 1.5 0 0 1 20 5.5V8m0 8v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-2"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 4 3h9A1.5 1.5 0 0 1 14.5 4.5V5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m0 0-5-5m5 5-5 5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8v14.4c0 .8.9 1.3 1.6.9l11-7.2a1 1 0 0 0 0-1.8l-11-7.2A1.05 1.05 0 0 0 7 4.8Z"/></symbol>
+</svg>
+
+<!-- ═══════════ AUTH ═══════════ -->
+<div id="view-auth">
+  <div class="auth-top">
+    <span class="brand"><span class="mark"><svg class="ic"><use href="#i-lens"/></svg></span>CodeLens</span>
+  </div>
+  <div class="auth-center">
+    <div class="auth-card">
+      <h1 id="auth-title">Welcome back</h1>
+      <div class="sub" id="auth-sub">Sign in to explore your codebases.</div>
+      <div class="seg">
+        <button id="tab-login" class="active" onclick="switchAuthTab('login')">Sign in</button>
+        <button id="tab-register" onclick="switchAuthTab('register')">Create account</button>
+      </div>
+      <div class="auth-form">
+        <div class="field" id="f-name" style="display:none">
+          <label>Full name</label><input id="in-name" type="text" placeholder="Bashar Ahmad" />
+        </div>
+        <div class="field"><label>Email</label><input id="in-email" type="email" placeholder="you@example.com" /></div>
+        <div class="field"><label>Password</label>
+          <input id="in-pass" type="password" onkeydown="if(event.key==='Enter')submitAuth()" /></div>
+        <button class="btn btn-p" id="btn-auth" onclick="submitAuth()">Sign in</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ APP — SIDEBAR + CONTENT ═══════════ -->
+<div id="app">
+  <aside class="side">
+    <span class="brand"><span class="mark"><svg class="ic"><use href="#i-lens"/></svg></span>CodeLens</span>
+
+    <button class="btn new-btn" onclick="openModal('modal-upload')">
+      <svg class="ic"><use href="#i-plus"/></svg>New project</button>
+
+    <button class="nav-item active" id="nav-projects" onclick="showDashboard()">
+      <svg class="ic"><use href="#i-folder"/></svg>Projects</button>
+
+    <div class="nav-label">Workspace</div>
+    <div class="ws-name" id="side-ws-name">No project open</div>
+    <button class="nav-item" id="nav-search" disabled onclick="showWs('search')">
+      <svg class="ic"><use href="#i-search"/></svg>Search</button>
+    <button class="nav-item" id="nav-ask" disabled onclick="showWs('ask')">
+      <svg class="ic"><use href="#i-chat"/></svg>Ask AI</button>
+    <button class="nav-item" id="nav-diagram" disabled onclick="showWs('diagram')">
+      <svg class="ic"><use href="#i-schema"/></svg>Diagram</button>
+
+    <div class="spacer"></div>
+    <div class="user">
+      <div class="avatar" id="avatar">B</div>
+      <span class="em mono" id="user-email"></span>
+      <button class="btn btn-ghost btn-icon" onclick="logout()" title="Sign out">
+        <svg class="ic"><use href="#i-out"/></svg></button>
+    </div>
+  </aside>
+
+  <div class="content">
+    <!-- DASHBOARD -->
+    <div class="view on" id="view-dashboard">
+      <div class="head">
+        <h2>Projects</h2><div class="grow"></div>
+        <button class="btn" onclick="openModal('modal-github')">
+          <svg class="ic"><use href="#i-branch"/></svg>Import from GitHub</button>
+        <button class="btn btn-p" onclick="openModal('modal-upload')">
+          <svg class="ic"><use href="#i-upload"/></svg>Upload ZIP</button>
+      </div>
+      <div class="subline">Upload a Java project, parse it, index it with embeddings — then search, ask, and diagram it.</div>
+      <div id="project-grid" class="grid"></div>
+      <div id="dash-empty" class="empty" style="display:none">
+        <div class="ei"><svg class="ic"><use href="#i-folder"/></svg></div>
+        <b>No projects yet</b>
+        Upload a ZIP of any Java project, or import one straight from GitHub.
+      </div>
+    </div>
+
+    <!-- WORKSPACE: SEARCH -->
+    <div class="view" id="view-search">
+      <div class="head"><h2>Search</h2><span class="mono" style="color:var(--tx-3);font-size:12.5px" id="search-proj"></span></div>
+      <div class="subline">Describe behaviour in plain English — results are ranked by semantic similarity.</div>
+      <div class="inputbar">
+        <input id="search-input" placeholder='e.g. "classes that handle pet owners"'
+               onkeydown="if(event.key==='Enter')runSearch()" />
+        <button class="btn btn-p" id="btn-search" onclick="runSearch()">Search</button>
+      </div>
+      <div id="search-results"></div>
+    </div>
+
+    <!-- WORKSPACE: ASK -->
+    <div class="view" id="view-ask">
+      <div class="head"><h2>Ask AI</h2><span class="mono" style="color:var(--tx-3);font-size:12.5px" id="ask-proj"></span></div>
+      <div class="subline">Answers are generated from your actual source code, with cited classes.</div>
+      <div id="chat" class="chat"></div>
+      <div class="inputbar">
+        <input id="ask-input" placeholder='e.g. "How does the Owner class store its pets?"'
+               onkeydown="if(event.key==='Enter')runAsk()" />
+        <button class="btn btn-p" id="btn-ask" onclick="runAsk()">Ask</button>
+      </div>
+    </div>
+
+    <!-- WORKSPACE: DIAGRAM -->
+    <div class="view" id="view-diagram">
+      <div class="head"><h2>Architecture diagram</h2><span class="mono" style="color:var(--tx-3);font-size:12.5px" id="dg-proj"></span></div>
+      <div class="subline">Generated from the parsed class structure. Drag to pan, scroll to zoom.</div>
+      <div class="dg-toolbar">
+        <select id="pkg-select"><option value="all">All packages</option></select>
+        <button class="btn btn-p btn-sm" id="btn-diagram" onclick="runDiagram()">
+          <svg class="ic" style="width:15px;height:15px"><use href="#i-play"/></svg>Generate</button>
+        <div class="grow"></div>
+        <button class="btn btn-sm" onclick="copyMermaid()" id="btn-copy" style="display:none">
+          <svg class="ic" style="width:15px;height:15px"><use href="#i-copy"/></svg>Copy source</button>
+        <button class="btn btn-sm" onclick="downloadSVG()" id="btn-dl" style="display:none">
+          <svg class="ic" style="width:15px;height:15px"><use href="#i-dl"/></svg>Download SVG</button>
+      </div>
+      <div class="dg-viewer" id="dg-viewer">
+        <div id="dg-inner"></div>
+        <div class="dg-overlay" id="dg-overlay">Select a package and press Generate.</div>
+        <div class="dg-hud" id="dg-hud" style="display:none">
+          <button class="btn btn-ghost btn-icon" onclick="zoomBy(0.8)" title="Zoom out"><svg class="ic"><use href="#i-zout"/></svg></button>
+          <span class="dg-zoom" id="dg-zoom">100%</span>
+          <button class="btn btn-ghost btn-icon" onclick="zoomBy(1.25)" title="Zoom in"><svg class="ic"><use href="#i-zin"/></svg></button>
+          <button class="btn btn-ghost btn-icon" onclick="fitDiagram()" title="Fit to view"><svg class="ic"><use href="#i-fit"/></svg></button>
+          <button class="btn btn-ghost btn-icon" onclick="toggleFullscreen()" title="Fullscreen"><svg class="ic"><use href="#i-full"/></svg></button>
+        </div>
+      </div>
+      <div class="dg-stats" id="dg-stats"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODALS ═══════════ -->
+<div class="modal-back" id="modal-upload">
+  <div class="modal">
+    <h3>Upload a Java project</h3>
+    <div class="field"><label>Project name</label><input id="up-name" type="text" placeholder="spring-petclinic" /></div>
+    <div class="field"><label>ZIP file — max 50 MB</label><input id="up-file" type="file" accept=".zip" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-upload')">Cancel</button>
+      <button class="btn btn-p" id="btn-upload" onclick="doUpload()">Upload and parse</button>
+    </div>
+  </div>
+</div>
+<div class="modal-back" id="modal-github">
+  <div class="modal">
+    <h3>Import from GitHub</h3>
+    <div class="field"><label>Repository URL</label>
+      <input id="gh-url" type="text" placeholder="https://github.com/spring-projects/spring-petclinic" /></div>
+    <div class="field"><label>Project name</label><input id="gh-name" type="text" placeholder="spring-petclinic" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-github')">Cancel</button>
+      <button class="btn btn-p" id="btn-github" onclick="doGithubImport()">Clone and parse</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* ═══════════ 0 · CONFIG & STATE ═══════════ */
+const API_BASE='http://localhost:8081';
+let authMode='login',projects=[],currentProject=null,lastMermaid='',lastSVG='';
+const pollers={};
+
+/* ═══════════ 1 · API HELPER ═══════════ */
+async function api(path,{method='GET',body=null,isForm=false}={}){
+  const headers={};const token=localStorage.getItem('cl_token');
+  if(token)headers['Authorization']='Bearer '+token;
+  if(body&&!isForm)headers['Content-Type']='application/json';
+  const res=await fetch(API_BASE+path,{method,headers,body:body?(isForm?body:JSON.stringify(body)):null});
+  if(res.status===401&&!path.startsWith('/api/auth')){logout();throw new Error('Session expired — please sign in again.');}
+  const ct=res.headers.get('content-type')||'';
+  const data=ct.includes('application/json')?await res.json():await res.text();
+  if(!res.ok)throw new Error((data&&data.message)?data.message:'Request failed ('+res.status+')');
+  return data;
+}
+
+/* ═══════════ 2 · UTILITIES ═══════════ */
+function toast(msg,isError=false){
+  const el=document.createElement('div');el.className='toast'+(isError?' err':'');el.textContent=msg;
+  document.getElementById('toasts').appendChild(el);setTimeout(()=>el.remove(),4200);
+}
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function fmtSize(b){if(b==null)return'—';return b>1048576?(b/1048576).toFixed(1)+' MB':Math.round(b/1024)+' KB';}
+
+/* ═══════════ 3 · AUTH ═══════════ */
+function switchAuthTab(mode){
+  authMode=mode;
+  document.getElementById('tab-login').classList.toggle('active',mode==='login');
+  document.getElementById('tab-register').classList.toggle('active',mode==='register');
+  document.getElementById('f-name').style.display=mode==='register'?'':'none';
+  document.getElementById('btn-auth').textContent=mode==='register'?'Create account':'Sign in';
+  document.getElementById('auth-title').textContent=mode==='register'?'Create your account':'Welcome back';
+  document.getElementById('auth-sub').textContent=mode==='register'?'Start exploring codebases in minutes.':'Sign in to explore your codebases.';
+}
+async function submitAuth(){
+  const email=document.getElementById('in-email').value.trim();
+  const pass=document.getElementById('in-pass').value;
+  if(!email||!pass)return toast('Email and password are required.',true);
+  const btn=document.getElementById('btn-auth');btn.disabled=true;
+  try{
+    let data;
+    if(authMode==='register'){
+      const fullName=document.getElementById('in-name').value.trim();
+      if(!fullName)throw new Error('Full name is required.');
+      data=await api('/api/auth/register',{method:'POST',body:{fullName,email,password:pass}});
+    }else{
+      data=await api('/api/auth/login',{method:'POST',body:{email,password:pass}});
+    }
+    localStorage.setItem('cl_token',data.token);localStorage.setItem('cl_email',email);
+    enterApp();
+  }catch(e){toast(e.message,true);}finally{btn.disabled=false;}
+}
+function enterApp(){
+  document.getElementById('view-auth').style.display='none';
+  document.getElementById('app').classList.add('on');
+  const email=localStorage.getItem('cl_email')||'';
+  document.getElementById('user-email').textContent=email;
+  document.getElementById('avatar').textContent=(email[0]||'?').toUpperCase();
+  showDashboard();
+}
+function logout(){
+  localStorage.removeItem('cl_token');localStorage.removeItem('cl_email');
+  Object.values(pollers).forEach(clearInterval);
+  document.getElementById('app').classList.remove('on');
+  document.getElementById('view-auth').style.display='flex';
+}
+
+/* ═══════════ 4 · VIEW ROUTER (sidebar navigation) ═══════════ */
+function setActiveNav(id){
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+}
+function showView(id){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  const v=document.getElementById(id);v.classList.add('on');
+}
+function showDashboard(){setActiveNav('nav-projects');showView('view-dashboard');loadProjects();}
+function showWs(tab){
+  if(!currentProject)return;
+  setActiveNav('nav-'+tab);showView('view-'+tab);
+}
+function enableWorkspace(p){
+  currentProject=p;
+  document.getElementById('side-ws-name').textContent=p.name;
+  ['nav-search','nav-ask','nav-diagram'].forEach(id=>document.getElementById(id).disabled=false);
+  ['search-proj','ask-proj','dg-proj'].forEach(id=>document.getElementById(id).textContent=p.name);
+  document.getElementById('search-results').innerHTML='';
+  document.getElementById('chat').innerHTML='';
+  resetDiagramUI();loadPackages();
+}
+
+/* ═══════════ 5 · DASHBOARD ═══════════ */
+async function loadProjects(){
+  try{
+    projects=await api('/api/projects');
+    renderProjects();
+    projects.filter(p=>p.status==='INDEXING').forEach(p=>startPolling(p.id));
+  }catch(e){toast(e.message,true);}
+}
+const PIPELINE=['UPLOADED','PARSED','INDEXING','INDEXED'];
+function pipelineHTML(status){
+  const idx=PIPELINE.indexOf(status);let s='';
+  PIPELINE.forEach((_,i)=>{
+    const c=i<idx?'done':(i===idx?'now':'');
+    s+=`<div class="pstep ${c}"><div class="pdot"></div>${i<PIPELINE.length-1?'<div class="pline"></div>':''}</div>`;
+  });
+  return`<div><div class="pipeline">${s}</div>
+    <div class="plabels"><span>Upload</span><span>Parse</span><span>Index</span><span>Ready</span></div></div>`;
+}
+function actionHTML(p){
+  if(p.status==='UPLOADED')return`<button class="btn btn-tonal btn-sm" onclick="doParse(${p.id})">Parse files</button>`;
+  if(p.status==='PARSED')return`<button class="btn btn-tonal btn-sm" onclick="doAnalyze(${p.id})">Generate embeddings</button>`;
+  if(p.status==='INDEXING')return`<button class="btn btn-sm" disabled><span class="spinner"></span>Indexing</button>`;
+  if(p.status==='INDEXED')return`<button class="btn btn-p btn-sm" onclick="openProject(${p.id})">Open
+    <svg class="ic" style="width:15px;height:15px"><use href="#i-arrow"/></svg></button>`;
+  return'';
+}
+function renderProjects(){
+  const grid=document.getElementById('project-grid');
+  document.getElementById('dash-empty').style.display=projects.length?'none':'block';
+  grid.innerHTML=projects.map((p,i)=>`
+    <div class="card" style="animation-delay:${i*0.05}s">
+      <div class="card-top"><div class="card-name">${esc(p.name)}</div>
+        <span class="chip ${esc(p.status)}">${esc(p.status)}</span></div>
+      ${pipelineHTML(p.status)}
+      <div class="card-meta"><span>${fmtSize(p.fileSize)}</span>
+        <span>${p.totalFiles!=null?p.totalFiles+' files':''}</span></div>
+      <div class="progress-wrap" id="prog-${p.id}" style="${p.status==='INDEXING'?'display:block':''}">
+        <div class="pbar"><div class="pfill" id="fill-${p.id}"></div></div>
+        <div class="ptext" id="ptext-${p.id}">Starting…</div></div>
+      <div class="card-actions">${actionHTML(p)}
+        <button class="btn btn-ghost btn-icon btn-sm" onclick="doDelete(${p.id})" title="Delete project">
+          <svg class="ic" style="width:16px;height:16px"><use href="#i-trash"/></svg></button></div>
+    </div>`).join('');
+}
+function openProject(id){
+  const p=projects.find(x=>x.id===id);if(!p)return;
+  enableWorkspace(p);showWs('search');
+}
+async function doUpload(){
+  const name=document.getElementById('up-name').value.trim();
+  const file=document.getElementById('up-file').files[0];
+  if(!name||!file)return toast('Project name and ZIP file are required.',true);
+  if(file.size>50*1024*1024)return toast('File exceeds the 50 MB limit.',true);
+  const btn=document.getElementById('btn-upload');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Uploading';
+  try{
+    const form=new FormData();form.append('file',file);form.append('projectName',name);
+    const proj=await api('/api/projects/upload',{method:'POST',body:form,isForm:true});
+    closeModal('modal-upload');toast('Uploaded "'+proj.name+'" — parsing…');
+    await loadProjects();await doParse(proj.id);
+  }catch(e){toast(e.message,true);}
+  finally{btn.disabled=false;btn.textContent='Upload and parse';}
+}
+async function doGithubImport(){
+  const repoUrl=document.getElementById('gh-url').value.trim();
+  const projectName=document.getElementById('gh-name').value.trim();
+  if(!repoUrl||!projectName)return toast('Repository URL and project name are required.',true);
+  const btn=document.getElementById('btn-github');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Cloning';
+  try{
+    const proj=await api('/api/projects/import-github',{method:'POST',body:{repoUrl,projectName}});
+    closeModal('modal-github');toast('Cloned "'+proj.name+'" — parsing…');
+    await loadProjects();await doParse(proj.id);
+  }catch(e){toast(e.message,true);}
+  finally{btn.disabled=false;btn.textContent='Clone and parse';}
+}
+async function doParse(id){
+  try{
+    const r=await api(`/api/projects/${id}/parse`,{method:'POST'});
+    toast(`Parsed ${r.totalFilesParsed} of ${r.totalFilesFound} files (${r.skippedFiles} skipped).`);
+    await loadProjects();
+  }catch(e){toast(e.message,true);}
+}
+async function doAnalyze(id){
+  try{
+    await api(`/api/projects/${id}/analyze`,{method:'POST'});
+    toast('Embedding started in the background.');
+    const p=projects.find(x=>x.id===id);if(p)p.status='INDEXING';
+    renderProjects();startPolling(id);
+  }catch(e){toast(e.message,true);}
+}
+function startPolling(id){
+  if(pollers[id])return;
+  pollers[id]=setInterval(async()=>{
+    try{
+      const s=await api(`/api/projects/${id}/analyze/status`);
+      const fill=document.getElementById('fill-'+id),text=document.getElementById('ptext-'+id);
+      if(fill)fill.style.width=(s.progressPercent||0)+'%';
+      if(text)text.textContent=`${s.processedUnits}/${s.totalUnits} units · ${s.progressPercent}%`+
+        (s.failedUnits?` · ${s.failedUnits} failed`:'');
+      if(s.analysisStatus==='COMPLETED'){
+        clearInterval(pollers[id]);delete pollers[id];
+        toast('Indexing complete — workspace ready.');await loadProjects();
+      }
+    }catch(e){clearInterval(pollers[id]);delete pollers[id];}
+  },3000);
+}
+async function doDelete(id){
+  if(!confirm('Delete this project and all of its indexed code?'))return;
+  try{
+    await api(`/api/projects/${id}`,{method:'DELETE'});toast('Project deleted.');
+    if(currentProject?.id===id){
+      currentProject=null;
+      document.getElementById('side-ws-name').textContent='No project open';
+      ['nav-search','nav-ask','nav-diagram'].forEach(x=>document.getElementById(x).disabled=true);
+    }
+    await loadProjects();
+  }catch(e){toast(e.message,true);}
+}
+
+/* ═══════════ 6 · SEARCH ═══════════ */
+async function runSearch(){
+  const query=document.getElementById('search-input').value.trim();if(!query)return;
+  const btn=document.getElementById('btn-search'),box=document.getElementById('search-results');
+  btn.disabled=true;
+  box.innerHTML='<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  try{
+    const results=await api(`/api/projects/${currentProject.id}/search`,{method:'POST',body:{query}});
+    if(!results.length){box.innerHTML='<div class="empty"><b>No matches</b>Try describing the behaviour differently.</div>';return;}
+    box.innerHTML=results.map((r,i)=>renderResult(r,i)).join('');
+  }catch(e){box.innerHTML='';toast(e.message,true);}
+  finally{btn.disabled=false;}
+}
+function renderResult(r,i){
+  const cls=r.similarityPercent>=75?'hi':(r.similarityPercent>=50?'mid':'lo');
+  let methods=[];try{methods=JSON.parse(r.methodsJson||'[]');}catch(_){}
+  const chips=methods.slice(0,12).map(m=>`<span class="mchip">${esc(m.name)}()</span>`).join('')+
+    (methods.length>12?`<span class="mchip">+${methods.length-12} more</span>`:'');
+  return`<div class="result" style="animation-delay:${i*0.04}s">
+    <div class="result-head"><span class="result-class">${esc(r.className)}</span>
+      <span class="result-type">${esc(r.classType)}</span>
+      <span class="sim ${cls}">${r.similarityPercent}%</span></div>
+    <div class="result-pkg">${esc(r.packageName)}</div>
+    <div>${chips}</div>
+    <details><summary>View source</summary><pre class="code">${esc(r.rawSourceCode)}</pre></details></div>`;
+}
+
+/* ═══════════ 7 · ASK AI ═══════════ */
+async function runAsk(){
+  const input=document.getElementById('ask-input');const question=input.value.trim();if(!question)return;
+  input.value='';
+  const chat=document.getElementById('chat'),btn=document.getElementById('btn-ask');btn.disabled=true;
+  chat.insertAdjacentHTML('beforeend',`<div class="msg user">${esc(question)}</div>`);
+  chat.insertAdjacentHTML('beforeend',
+    `<div class="msg ai" id="msg-wait"><span class="dots"><i></i><i></i><i></i></span></div>`);
+  chat.lastElementChild.scrollIntoView({behavior:'smooth'});
+  try{
+    const r=await api(`/api/projects/${currentProject.id}/ask`,{method:'POST',body:{question}});
+    const sources=(r.sources||[]).map(s=>
+      `<div class="src-line"><b>${esc(s.className)}</b> · ${esc(s.packageName)} · ${s.similarityPercent}%</div>`).join('');
+    document.getElementById('msg-wait').outerHTML=`
+      <div class="msg ai">${esc(r.answer)}
+        <details class="sources"><summary>${(r.sources||[]).length} sources · ${r.contextUnitsUsed} context units</summary>
+        ${sources}</details></div>`;
+  }catch(e){
+    document.getElementById('msg-wait').outerHTML=
+      `<div class="msg ai" style="border-color:rgba(242,139,130,.4)">${esc(e.message)}</div>`;
+  }finally{btn.disabled=false;chat.lastElementChild.scrollIntoView({behavior:'smooth'});}
+}
+
+/* ═══════════ 8 · DIAGRAM VIEWER ═══════════
+   Fixes for the "disappearing diagram":
+   1. mermaid maxTextSize raised from 50,000 → 5,000,000 chars
+      (large packages exceeded the default and render() threw).
+   2. Errors are now rendered INSIDE the canvas, never swallowed.
+   3. fitDiagram() reads the SVG's real pixel size after layout
+      (two requestAnimationFrame ticks) so the fit can't compute 0.
+   4. Scale clamps widened (0.05–5) so huge diagrams can fit.     */
+const dgView={x:0,y:0,s:1};
+const viewer=()=>document.getElementById('dg-viewer');
+const inner=()=>document.getElementById('dg-inner');
+function applyView(){
+  inner().style.transform=`translate(${dgView.x}px,${dgView.y}px) scale(${dgView.s})`;
+  document.getElementById('dg-zoom').textContent=Math.round(dgView.s*100)+'%';
+}
+function zoomBy(factor,cx,cy){
+  const box=viewer().getBoundingClientRect();
+  cx=cx??box.width/2;cy=cy??box.height/2;
+  const ns=Math.min(5,Math.max(0.05,dgView.s*factor));
+  dgView.x=cx-(cx-dgView.x)*(ns/dgView.s);
+  dgView.y=cy-(cy-dgView.y)*(ns/dgView.s);
+  dgView.s=ns;applyView();
+}
+function svgSize(){
+  const svg=inner().querySelector('svg');if(!svg)return null;
+  let w=parseFloat(svg.getAttribute('width'))||svg.viewBox?.baseVal?.width||0;
+  let h=parseFloat(svg.getAttribute('height'))||svg.viewBox?.baseVal?.height||0;
+  if(!w||!h){try{const b=svg.getBBox();w=b.width;h=b.height;}catch(_){}}
+  return(w&&h)?{w,h}:null;
+}
+function fitDiagram(){
+  const size=svgSize();if(!size)return;
+  const vb=viewer().getBoundingClientRect();
+  const s=Math.min((vb.width-72)/size.w,(vb.height-72)/size.h,1.5);
+  dgView.s=Math.max(0.05,s);
+  dgView.x=(vb.width-size.w*dgView.s)/2;
+  dgView.y=(vb.height-size.h*dgView.s)/2;
+  applyView();
+}
+let drag=null;
+document.addEventListener('pointerdown',e=>{
+  const v=e.target.closest('#dg-viewer');if(!v||e.target.closest('.dg-hud'))return;
+  drag={x:e.clientX,y:e.clientY,vx:dgView.x,vy:dgView.y};
+  v.classList.add('grabbing');v.setPointerCapture(e.pointerId);
+});
+document.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  dgView.x=drag.vx+(e.clientX-drag.x);dgView.y=drag.vy+(e.clientY-drag.y);applyView();
+});
+document.addEventListener('pointerup',()=>{drag=null;viewer()?.classList.remove('grabbing');});
+document.addEventListener('wheel',e=>{
+  const v=e.target.closest('#dg-viewer');if(!v)return;
+  e.preventDefault();
+  const box=v.getBoundingClientRect();
+  zoomBy(e.deltaY<0?1.12:0.89,e.clientX-box.left,e.clientY-box.top);
+},{passive:false});
+function toggleFullscreen(){
+  if(document.fullscreenElement)document.exitFullscreen();
+  else viewer().requestFullscreen();
+}
+document.addEventListener('fullscreenchange',()=>requestAnimationFrame(()=>requestAnimationFrame(fitDiagram)));
+
+function resetDiagramUI(){
+  inner().innerHTML='';lastMermaid='';lastSVG='';
+  const ov=document.getElementById('dg-overlay');
+  ov.style.display='grid';ov.textContent='Select a package and press Generate.';
+  document.getElementById('dg-hud').style.display='none';
+  document.getElementById('btn-copy').style.display='none';
+  document.getElementById('btn-dl').style.display='none';
+  document.getElementById('dg-stats').textContent='';
+}
+async function loadPackages(){
+  try{
+    const r=await api(`/api/projects/${currentProject.id}/diagram?package=all`,{method:'POST'});
+    const sel=document.getElementById('pkg-select');
+    sel.innerHTML='<option value="all">All packages</option>'+
+      (r.availablePackages||[]).map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  }catch(_){}
+}
+async function runDiagram(){
+  const pkg=document.getElementById('pkg-select').value;
+  const btn=document.getElementById('btn-diagram');
+  const ov=document.getElementById('dg-overlay');
+  btn.disabled=true;
+  ov.style.display='grid';ov.textContent='Building diagram…';
+  inner().innerHTML='';
+  try{
+    const r=await api(`/api/projects/${currentProject.id}/diagram?package=${encodeURIComponent(pkg)}`,{method:'POST'});
+    lastMermaid=r.diagram;
+    const {svg}=await mermaid.render('mmd'+Date.now(),r.diagram);
+    lastSVG=svg;
+    inner().innerHTML=svg;
+    ov.style.display='none';
+    document.getElementById('dg-hud').style.display='flex';
+    document.getElementById('btn-copy').style.display='';
+    document.getElementById('btn-dl').style.display='';
+    document.getElementById('dg-stats').innerHTML=
+      `<span>${r.classCount} classes</span><span>${r.relationshipCount} relationships</span><span>package: ${esc(r.packageFilter)}</span>`;
+    /* wait two frames so the SVG has a layout before measuring */
+    requestAnimationFrame(()=>requestAnimationFrame(fitDiagram));
+  }catch(e){
+    /* NEVER disappear silently — show the error inside the canvas */
+    ov.style.display='grid';
+    ov.innerHTML=`<div class="err-box">Diagram could not be rendered.<br><br>${esc(e.message||String(e))}
+      <br><br>Try a smaller package filter, or copy the source to mermaid.live.</div>`;
+    if(lastMermaid){document.getElementById('btn-copy').style.display='';}
+  }finally{btn.disabled=false;}
+}
+function copyMermaid(){
+  navigator.clipboard.writeText(lastMermaid).then(()=>toast('Mermaid source copied. Paste it at mermaid.live'));
+}
+function downloadSVG(){
+  const blob=new Blob([lastSVG],{type:'image/svg+xml'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(currentProject?.name||'diagram')+'-architecture.svg';
+  a.click();URL.revokeObjectURL(a.href);
+}
+
+/* ═══════════ 9 · BOOTSTRAP ═══════════ */
+mermaid.initialize({
+  startOnLoad:false,
+  securityLevel:'loose',
+  maxTextSize:5000000,                /* FIX: default 50k silently killed big diagrams */
+  theme:'base',
+  themeVariables:{
+    darkMode:true,
+    background:'#161718',
+    primaryColor:'#26282B',           /* class boxes  */
+    primaryBorderColor:'#8C8FFF',     /* accent border */
+    primaryTextColor:'#E3E3E5',
+    lineColor:'#7A8190',
+    textColor:'#E3E3E5',
+    fontFamily:'JetBrains Mono, monospace',
+    fontSize:'13px'
+  },
+  class:{useMaxWidth:false}           /* keep natural size — the viewer scales it */
+});
+if(localStorage.getItem('cl_token'))enterApp();
+</script>
+</body>
+</html>
